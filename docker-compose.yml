@@ -1,0 +1,32 @@
+
+services:
+  new-api:
+    build: .
+    container_name: new-api
+    restart: always
+    command: --log-dir /app/logs
+    ports:
+      - "3008:3000"
+    volumes:
+      - ./data:/data
+      - ./logs:/app/logs
+    environment:
+      - REDIS_CONN_STRING=redis://redis
+      - SESSION_SECRET=fhkdsahfkjladhskjfhkj  # 修改为随机字符串
+      - TZ=Asia/Shanghai
+#      - NODE_TYPE=slave  # 多机部署时从节点取消注释该行
+#      - SYNC_FREQUENCY=60  # 需要定期从数据库加载数据时取消注释该行
+#      - FRONTEND_BASE_URL=https://openai.justsong.cn  # 多机部署时从节点取消注释该行
+
+    depends_on:
+      - redis
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' | awk -F: '{print $2}'" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    restart: always
