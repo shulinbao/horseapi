@@ -1,0 +1,490 @@
+import React, { useContext, useEffect, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { UserContext } from '../context/User';
+import {
+  API,
+  getLogo,
+  showError,
+  showInfo,
+  showSuccess,
+  updateAPI,
+} from '../helpers';
+import { onGitHubOAuthClicked, onLinuxDOOAuthClicked } from './utils';
+import Turnstile from 'react-turnstile';
+import {
+  Button,
+  Card,
+  Divider,
+  Form,
+  Icon,
+  Layout,
+  Modal,
+} from '@douyinfe/semi-ui';
+import Title from '@douyinfe/semi-ui/lib/es/typography/title';
+import Text from '@douyinfe/semi-ui/lib/es/typography/text';
+import TelegramLoginButton from 'react-telegram-login';
+
+import { IconGithubLogo, IconAlarm } from '@douyinfe/semi-icons';
+import WeChatIcon from './WeChatIcon';
+import { setUserData } from '../helpers/data.js';
+import LinuxDoIcon from './LinuxDoIcon.js';
+
+
+
+
+
+
+
+const getUserLanguage = () => {
+    const lang = navigator.language || navigator.userLanguage;
+    if (lang.startsWith('zh-Hant') || lang === 'zh-TW' || lang === 'zh-HK') {
+        return 'zh-Hant'; // 繁体中文
+    } else if (lang.startsWith('zh')) {
+        return 'zh'; // 简体中文
+    } else {
+        return 'en'; // 默认英文
+    }
+};
+
+const translations = {
+  expiredMessage: {
+    en: 'Not logged in or login expired, please log in again!',
+    zh: '未登录或登录已过期，请重新登录！',
+    'zh-Hant': '未登入或登入已過期，請重新登入！',
+  },
+  waitingForTurnstile: {
+    en: 'Please wait a few seconds and try again. Turnstile is checking user environment!',
+    zh: '请稍后几秒重试，Turnstile 正在检查用户环境！',
+    'zh-Hant': '請稍後幾秒重試，Turnstile 正在檢查用戶環境！',
+  },
+  loginSuccess: {
+    en: 'Login successful!',
+    zh: '登录成功！',
+    'zh-Hant': '登入成功！',
+  },
+  defaultPasswordWarning: {
+    en: 'You are using the default password!',
+    zh: '您正在使用默认密码！',
+    'zh-Hant': '您正在使用預設密碼！',
+  },
+  changePasswordReminder: {
+    en: 'Please change the default password immediately!',
+    zh: '请立刻修改默认密码！',
+    'zh-Hant': '請立刻修改預設密碼！',
+  },
+  enterUsernameAndPassword: {
+    en: 'Please enter username and password!',
+    zh: '请输入用户名和密码！',
+    'zh-Hant': '請輸入使用者名稱和密碼！',
+  },
+  loginTitle: {
+    en: 'User Login',
+    zh: '用户登录',
+    'zh-Hant': '使用者登入',
+  },
+  usernameLabel: {
+    en: 'Username',
+    zh: '用户名',
+    'zh-Hant': '使用者名稱',
+  },
+  passwordLabel: {
+    en: 'Password',
+    zh: '密码',
+    'zh-Hant': '密碼',
+  },
+  loginButton: {
+    en: 'Login',
+    zh: '登录',
+    'zh-Hant': '登入',
+  },
+  noAccountText: {
+    en: 'Don\'t have an account?',
+    zh: '注册账号',
+    'zh-Hant': '註冊',
+  },
+  forgotPasswordText: {
+    en: 'Forgot password?',
+    zh: '忘记密码',
+    'zh-Hant': '忘記密碼',
+  },
+  thirdPartyLogin: {
+    en: 'Third-party login',
+    zh: '第三方登录',
+    'zh-Hant': '第三方登入',
+  },
+  wechatLogin: {
+    en: 'WeChat Login',
+    zh: '微信扫码登录',
+    'zh-Hant': '微信掃碼登入',
+  },
+  enterVerificationCode: {
+    en: 'Please enter the verification code.',
+    zh: '请输入验证码',
+    'zh-Hant': '請輸入驗證碼',
+  },
+  verificationCodeHint: {
+    en: 'Scan the QR code with WeChat to follow the public account and get the verification code (valid for 3 minutes).',
+    zh: '微信扫码关注公众号，输入「验证码」获取验证码（三分钟内有效）',
+    'zh-Hant': '微信掃碼關注公眾號，輸入「驗證碼」獲取驗證碼（三分鐘內有效）',
+  },  
+};
+
+const getTranslation = (key, language) => {
+    return translations[key][language] || translations[key]['en'];
+};
+
+const userLanguage = getUserLanguage();  // 获取用户语言
+
+
+
+
+
+
+const LoginForm = () => {
+  const [inputs, setInputs] = useState({
+    username: '',
+    password: '',
+    wechat_verification_code: '',
+  });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [submitted, setSubmitted] = useState(false);
+  const { username, password } = inputs;
+  const [userState, userDispatch] = useContext(UserContext);
+  const [turnstileEnabled, setTurnstileEnabled] = useState(false);
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
+  let navigate = useNavigate();
+  const [status, setStatus] = useState({});
+  const [showWeChatLoginModal, setShowWeChatLoginModal] = useState(false);
+
+  const logo = getLogo();
+
+  let affCode = new URLSearchParams(window.location.search).get('aff');
+  if (affCode) {
+    localStorage.setItem('aff', affCode);
+  }
+
+  useEffect(() => {
+    if (searchParams.get('expired')) {
+      showError(getTranslation('expiredMessage', userLanguage));
+    }
+	
+
+	
+    let status = localStorage.getItem('status');
+    if (status) {
+      status = JSON.parse(status);
+      setStatus(status);
+      if (status.turnstile_check) {
+        setTurnstileEnabled(true);
+        setTurnstileSiteKey(status.turnstile_site_key);
+      }
+    }
+	
+
+
+
+  }, []);
+
+  const onWeChatLoginClicked = () => {
+    setShowWeChatLoginModal(true);
+  };
+
+  const onSubmitWeChatVerificationCode = async () => {
+    if (turnstileEnabled && turnstileToken === '') {
+      showInfo(getTranslation('waitingForTurnstile', userLanguage));
+      return;
+    }
+    const res = await API.get(
+      `/api/oauth/wechat?code=${inputs.wechat_verification_code}`,
+    );
+    const { success, message, data } = res.data;
+    if (success) {
+      userDispatch({ type: 'login', payload: data });
+      localStorage.setItem('user', JSON.stringify(data));
+      setUserData(data);
+      updateAPI();
+      navigate('/');
+      showSuccess(getTranslation('loginSuccess', userLanguage));
+      setShowWeChatLoginModal(false);
+    } else {
+      showError(message);
+    }
+  };
+
+  function handleChange(name, value) {
+    setInputs((inputs) => ({ ...inputs, [name]: value }));
+  }
+
+  async function handleSubmit(e) {
+    if (turnstileEnabled && turnstileToken === '') {
+      showInfo(getTranslation('waitingForTurnstile', userLanguage));
+      return;
+    }
+    setSubmitted(true);
+    if (username && password) {
+      const res = await API.post(
+        `/api/user/login?turnstile=${turnstileToken}`,
+        {
+          username,
+          password,
+        },
+      );
+      const { success, message, data } = res.data;
+      if (success) {
+        userDispatch({ type: 'login', payload: data });
+        setUserData(data);
+        updateAPI();
+        showSuccess(getTranslation('loginSuccess', userLanguage));
+        if (username === 'root' && password === '123456') {
+          Modal.error({
+            title: getTranslation('defaultPasswordWarning', userLanguage),
+            content: getTranslation('changePasswordReminder', userLanguage),
+            centered: true,
+          });
+        }
+        navigate('/token');
+      } else {
+        showError(message);
+      }
+    } else {
+      showError(getTranslation('enterUsernameAndPassword', userLanguage));
+    }
+  }
+
+  const onTelegramLoginClicked = async (response) => {
+    const fields = [
+      'id',
+      'first_name',
+      'last_name',
+      'username',
+      'photo_url',
+      'auth_date',
+      'hash',
+      'lang',
+    ];
+    const params = {};
+    fields.forEach((field) => {
+      if (response[field]) {
+        params[field] = response[field];
+      }
+    });
+    const res = await API.get(`/api/oauth/telegram/login`, { params });
+    const { success, message, data } = res.data;
+    if (success) {
+      userDispatch({ type: 'login', payload: data });
+      localStorage.setItem('user', JSON.stringify(data));
+      showSuccess(getTranslation('loginSuccess', userLanguage));
+      setUserData(data);
+      updateAPI();
+      navigate('/');
+    } else {
+      showError(message);
+    }
+  };
+
+
+
+
+
+
+
+
+    return (
+    <div>
+      <Layout>
+        <Layout.Header></Layout.Header>
+        <Layout.Content>
+          <div
+            style={{
+              justifyContent: 'center',
+              display: 'flex',
+              marginTop: 120,
+            }}
+          >
+            <div style={{ width: 500 }}>
+              <Card>
+                <Title heading={2} style={{ textAlign: 'center' }}>
+                  {getTranslation('loginTitle', userLanguage)}
+                </Title>
+                <Form>
+                  <Form.Input
+                    field={'username'}
+                    label={getTranslation('usernameLabel', userLanguage)}
+                    placeholder={getTranslation('usernameLabel', userLanguage)}
+                    name='username'
+                    onChange={(value) => handleChange('username', value)}
+                  />
+                  <Form.Input
+                    field={'password'}
+                    label={getTranslation('passwordLabel', userLanguage)}
+                    placeholder={getTranslation('passwordLabel', userLanguage)}
+                    name='password'
+                    type='password'
+                    onChange={(value) => handleChange('password', value)}
+                  />
+
+                  <Button
+                    theme='solid'
+                    style={{ width: '100%' }}
+                    type={'primary'}
+                    size='large'
+                    htmlType={'submit'}
+                    onClick={handleSubmit}
+                  >
+                    {getTranslation('loginButton', userLanguage)}
+                  </Button>
+                </Form>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginTop: 20,
+                  }}
+                >
+                  <Text>
+                    <Link to='/register'>{getTranslation('noAccountText', userLanguage)}</Link>
+                  </Text>
+                  <Text>
+					<Link to='/reset'>{getTranslation('forgotPasswordText', userLanguage)}</Link>
+                  </Text>
+                </div>
+                
+				
+
+
+
+				
+				{status.github_oauth ||
+                status.wechat_login ||
+                status.telegram_oauth ||
+                status.linuxdo_oauth ? (
+                  <>
+                    <Divider margin='12px' align='center'>
+                      {getTranslation('thirdPartyLogin', userLanguage)}
+                    </Divider>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        marginTop: 20,
+                      }}
+                    >
+                      {status.github_oauth ? (
+                        <Button
+                          type='primary'
+                          icon={<IconGithubLogo />}
+                          onClick={() =>
+                            onGitHubOAuthClicked(status.github_client_id)
+                          }
+                        />
+                      ) : (
+                        <></>
+                      )}
+                      {status.linuxdo_oauth ? (
+                        <Button
+                          icon={<LinuxDoIcon />}
+                          onClick={() =>
+                            onLinuxDOOAuthClicked(status.linuxdo_client_id)
+                          }
+                        />
+                      ) : (
+                        <></>
+                      )}
+                      {status.wechat_login ? (
+                        <Button
+                          type='primary'
+                          style={{ color: 'rgba(var(--semi-green-5), 1)' }}
+                          icon={<Icon svg={<WeChatIcon />} />}
+                          onClick={onWeChatLoginClicked}
+                        />
+                      ) : (
+                        <></>
+                      )}
+                    </div>
+                    {status.telegram_oauth ? (
+                      <>
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'center',
+                            marginTop: 5,
+                          }}
+                        >
+                          <TelegramLoginButton
+                            dataOnauth={onTelegramLoginClicked}
+                            botName={status.telegram_bot_name}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <></>
+                    )}
+                  </>
+                ) : (
+                  <></>
+                )}
+                <Modal
+                  title={getTranslation('wechatLogin', userLanguage)}
+                  visible={showWeChatLoginModal}
+                  maskClosable={true}
+                  onOk={onSubmitWeChatVerificationCode}
+                  onCancel={() => setShowWeChatLoginModal(false)}
+                  okText={getTranslation('loginButton', userLanguage)}
+                  size={'small'}
+                  centered={true}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItem: 'center',
+                      flexDirection: 'column',
+                    }}
+                  >
+                    <img src={status.wechat_qrcode} />
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <p>
+                      {getTranslation('verificationCodeHint', userLanguage)}
+                    </p>
+                  </div>
+                  <Form size='large'>
+                    <Form.Input
+                      field={'wechat_verification_code'}
+                      placeholder={getTranslation('enterVerificationCode', userLanguage)}
+                      label={getTranslation('enterVerificationCode', userLanguage)}
+                      value={inputs.wechat_verification_code}
+                      onChange={(value) =>
+                        handleChange('wechat_verification_code', value)
+                      }
+                    />
+                  </Form>
+                </Modal>
+              </Card>
+              {turnstileEnabled ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    marginTop: 20,
+                  }}
+                >
+                  <Turnstile
+                    sitekey={turnstileSiteKey}
+                    onVerify={(token) => {
+                      setTurnstileToken(token);
+                    }}
+                  />
+                </div>
+              ) : (
+                <></>
+              )}
+            </div>
+          </div>
+        </Layout.Content>
+      </Layout>
+    </div>
+  );
+};
+
+export default LoginForm;
