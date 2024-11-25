@@ -1,5 +1,7 @@
 # HorseAPI
 
+![Logo](horseapi.jpg)
+
 [English](https://github.com/shulinbao/horseapi/blob/main/README-en.md)
 
 一个基于 [Calcium-Ion/new-api](https://github.com/Calcium-Ion/new-api) 二次开发的 OpenAI 格式的 API 管理工具，主要用于自己的 HorseGPT 项目
