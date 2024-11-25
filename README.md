@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="horseapi.jpg" alt="Project Logo" width="200">
+</p>
+
 # HorseAPI
 
 ![Logo](horseapi.jpg)
